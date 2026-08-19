@@ -1,81 +1,253 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Languages, Phone, Tractor, UserRound } from "lucide-react";
+import { toast } from "sonner";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
+import { ShimmerButton } from "@/components/ui/shimmer-button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { getSupabaseBrowserClient } from "@/lib/supabase-client";
+import { saveSessionProfile, type SessionRole } from "@/app/_data/session";
+import { useLanguage } from "@/app/_components/language-toggle";
+
+const copy = {
+  en: {
+    eyebrow: "One login · two services",
+    title: "Login",
+    intro: "Choose your role to continue.",
+    farmer: "Farmer",
+    farmerHint: "Find or rent equipment",
+    owner: "Equipment owner",
+    ownerHint: "List equipment and manage requests",
+    phone: "Mobile number",
+    send: "Send OTP",
+    verify: "Login",
+    change: "Change number",
+    otp: "Enter the 6-digit OTP",
+    register: "New here? Register",
+    language: "తెలుగు",
+  },
+  te: {
+    eyebrow: "ఒక లాగిన్ · రెండు సేవలు",
+    title: "లాగిన్",
+    intro: "కొనసాగించడానికి మీ పాత్రను ఎంచుకోండి.",
+    farmer: "రైతు",
+    farmerHint: "పరికరాలను కనుగొని అద్దెకు తీసుకోండి",
+    owner: "యంత్ర యజమాని",
+    ownerHint: "పరికరాలను జాబితా చేసి అభ్యర్థనలు నిర్వహించండి",
+    phone: "మొబైల్ నంబర్",
+    send: "OTP పంపండి",
+    verify: "లాగిన్",
+    change: "నంబర్ మార్చండి",
+    otp: "6 అంకెల OTP నమోదు చేయండి",
+    register: "కొత్తవారా? నమోదు చేయండి",
+    language: "English",
+  },
+} as const;
 
 export default function LoginPage() {
   const router = useRouter();
-  const [phone, setPhone] = useState("9876543210");
-  const [password, setPassword] = useState("");
+  const { language, toggleLanguage } = useLanguage();
+  const text = copy[language];
+  const [role, setRole] = useState<SessionRole>("farmer");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [working, setWorking] = useState(false);
 
-  function handleSubmit() {
-    localStorage.setItem(
-      "mandalrent-session",
-      JSON.stringify({
-        role: "farmer",
-        phone,
-        signedInAt: new Date().toISOString(),
-      }),
-    );
-    router.push("/dashboard");
+  async function sendOtp() {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length !== 10)
+      return toast.error(
+        language === "te"
+          ? "10 అంకెల మొబైల్ నంబర్ నమోదు చేయండి"
+          : "Enter a valid 10-digit mobile number",
+      );
+    setWorking(true);
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) {
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: `+91${digits}`,
+        options: { data: { role, preferred_language: language } },
+      });
+      if (error) {
+        setWorking(false);
+        return toast.error(error.message);
+      }
+    }
+    setWorking(false);
+    setStep("otp");
+    toast.success(supabase ? "OTP sent" : "Demo OTP: 123456");
+  }
+
+  async function verifyOtp() {
+    if (otp.length !== 6)
+      return toast.error(
+        language === "te"
+          ? "6 అంకెల OTP నమోదు చేయండి"
+          : "Enter the 6-digit OTP",
+      );
+    setWorking(true);
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) {
+      const { error } = await supabase.auth.verifyOtp({
+        phone: `+91${phone.replace(/\D/g, "")}`,
+        token: otp,
+        type: "sms",
+      });
+      if (error) {
+        setWorking(false);
+        return toast.error(error.message);
+      }
+    } else if (otp !== "123456") {
+      setWorking(false);
+      return toast.error("Demo OTP is 123456");
+    }
+    saveSessionProfile({
+      authenticated: true,
+      entryType: "login",
+      role,
+      phone: phone.replace(/\D/g, ""),
+      language,
+    });
+    setWorking(false);
+    router.push(role === "owner" ? "/owner" : "/dashboard");
   }
 
   return (
-    <main className="grid min-h-[calc(100vh-2rem)] place-items-center py-8">
-      <section className="w-full max-w-md rounded-[32px] border border-[color:var(--line)] bg-white p-6 shadow-[0_24px_80px_rgba(26,42,36,0.08)] sm:p-8">
-        <Link href="/" className="inline-flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[color:var(--accent)] text-base font-black text-white">
-            MR
+    <main className="login-page">
+      <section className="login-photo" aria-label="MandalRent login">
+        <div className="login-photo-overlay" />
+        <Link href="/" className="photo-brand">
+          <span className="brand-mark">
+            <Tractor />
           </span>
           <span>
-            <span className="block text-lg font-black tracking-tight">MandalRent</span>
-            <span className="block text-xs uppercase tracking-[0.28em] text-[color:var(--muted)]">Authentication</span>
+            Mandal<span>Rent</span>
           </span>
         </Link>
-
-        <p className="mt-8 text-xs uppercase tracking-[0.32em] text-[color:var(--muted)]">Welcome back</p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight">Sign in to continue</h1>
-        <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">
-          This is the first integrated auth screen. It currently uses local demo session state and can later switch to
-          Supabase without changing the route structure.
-        </p>
-
-        <div className="mt-6 space-y-4">
-          <label className="block rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-            <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">Phone</span>
-            <input
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              inputMode="tel"
-              className="mt-2 w-full bg-transparent text-sm outline-none"
-            />
-          </label>
-          <label className="block rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-            <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">Password</span>
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              type="password"
-              className="mt-2 w-full bg-transparent text-sm outline-none"
-            />
-          </label>
+        <div className="photo-copy">
+          <span className="eyebrow-light">{text.eyebrow}</span>
+          <h1>
+            {language === "te"
+              ? "మీ పొలానికి కావాల్సిన యంత్రం, మీ దగ్గరలోనే."
+              : "The right machine for your farm, nearby."}
+          </h1>
+          <p>{text.intro}</p>
+        </div>
+      </section>
+      <section className="login-panel">
+        <div className="login-card">
           <button
             type="button"
-            onClick={handleSubmit}
-            className="w-full rounded-full bg-[color:var(--accent)] px-4 py-3 text-sm font-semibold text-white"
+            className="language-button"
+            onClick={toggleLanguage}
           >
-            Sign in
+            <Languages size={60} /> {text.language}
           </button>
-        </div>
-
-        <div className="mt-5 flex items-center justify-between gap-4 text-sm">
-          <Link href="/register" className="font-semibold text-[color:var(--accent)]">
-            Create account
-          </Link>
-          <Link href="/dashboard" className="font-semibold text-[color:var(--accent)]">
-            Skip to dashboard
-          </Link>
+          <p className="eyebrow">{text.eyebrow}</p>
+          <h2>{text.title}</h2>
+          <p className="login-intro">{text.intro}</p>
+          <ToggleGroup
+            value={[role]}
+            onValueChange={(values) =>
+              values[0] && setRole(values[0] as SessionRole)
+            }
+            className="role-toggle"
+            spacing={2}
+          >
+            <ToggleGroupItem value="farmer" className="role-choice">
+              <span className="role-icon">
+                <UserRound />
+              </span>
+              <span>
+                <strong>{text.farmer}</strong>
+                <small>{text.farmerHint}</small>
+              </span>
+            </ToggleGroupItem>
+            <ToggleGroupItem value="owner" className="role-choice">
+              <span className="role-icon">
+                <Tractor />
+              </span>
+              <span>
+                <strong>{text.owner}</strong>
+                <small>{text.ownerHint}</small>
+              </span>
+            </ToggleGroupItem>
+          </ToggleGroup>
+          {step === "phone" ? (
+            <FieldGroup className="login-fields">
+              <Field>
+                <FieldLabel htmlFor="phone">{text.phone}</FieldLabel>
+                <div className="phone-input">
+                  <span>+91</span>
+                  <Phone />
+                  <Input
+                    id="phone"
+                    inputMode="numeric"
+                    maxLength={10}
+                    value={phone}
+                    onChange={(event) =>
+                      setPhone(event.target.value.replace(/\D/g, ""))
+                    }
+                  />
+                </div>
+              </Field>
+              <ShimmerButton
+                type="button"
+                onClick={sendOtp}
+                disabled={working}
+                background="#075b2b"
+                className="login-submit"
+              >
+                {working ? "…" : text.send}
+              </ShimmerButton>
+            </FieldGroup>
+          ) : (
+            <FieldGroup className="login-fields">
+              <Field>
+                <FieldLabel>{text.otp}</FieldLabel>
+                <InputOTP maxLength={6} value={otp} onChange={setOtp}>
+                  <InputOTPGroup>
+                    {Array.from({ length: 6 }, (_, index) => (
+                      <InputOTPSlot
+                        key={index}
+                        index={index}
+                        className="otp-slot"
+                      />
+                    ))}
+                  </InputOTPGroup>
+                </InputOTP>
+              </Field>
+              <ShimmerButton
+                type="button"
+                onClick={verifyOtp}
+                disabled={working}
+                background="#075b2b"
+                className="login-submit"
+              >
+                {working ? "…" : text.verify}
+              </ShimmerButton>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setStep("phone")}
+              >
+                <ArrowLeft /> {text.change}
+              </button>
+            </FieldGroup>
+          )}
+          <div className="secure-note">
+            <Link href="/register">{text.register}</Link>
+          </div>
         </div>
       </section>
     </main>
