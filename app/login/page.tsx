@@ -14,7 +14,11 @@ import {
 } from "@/components/ui/input-otp";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { getSupabaseBrowserClient } from "@/lib/supabase-client";
+import {
+  resetRecaptcha,
+  sendPhoneOTP,
+  verifyPhoneOTP,
+} from "@/lib/firebase-auth";
 import { saveSessionProfile, type SessionRole } from "@/app/_data/session";
 import { useLanguage } from "@/app/_components/language-toggle";
 
@@ -62,64 +66,93 @@ export default function LoginPage() {
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [working, setWorking] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState<Awaited<
+    ReturnType<typeof sendPhoneOTP>
+  > | null>(null);
 
   async function sendOtp() {
     const digits = phone.replace(/\D/g, "");
-    if (digits.length !== 10)
+
+    if (digits.length !== 10) {
       return toast.error(
         language === "te"
           ? "10 అంకెల మొబైల్ నంబర్ నమోదు చేయండి"
           : "Enter a valid 10-digit mobile number",
       );
-    setWorking(true);
-    const supabase = getSupabaseBrowserClient();
-    if (supabase) {
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: `+91${digits}`,
-        options: { data: { role, preferred_language: language } },
-      });
-      if (error) {
-        setWorking(false);
-        return toast.error(error.message);
-      }
     }
-    setWorking(false);
-    setStep("otp");
-    toast.success(supabase ? "OTP sent" : "Demo OTP: 123456");
+
+    setWorking(true);
+
+    try {
+      const result = await sendPhoneOTP(`+91${digits}`, "recaptcha-container");
+
+      setConfirmationResult(result);
+      setStep("otp");
+
+      toast.success(
+        language === "te" ? "OTP పంపబడింది" : "OTP sent successfully",
+      );
+    } catch (error) {
+      console.error("Firebase OTP error:", error);
+
+      toast.error(
+        error instanceof Error ? error.message : "Unable to send OTP",
+      );
+    } finally {
+      setWorking(false);
+    }
   }
 
   async function verifyOtp() {
-    if (otp.length !== 6)
+    if (otp.length !== 6) {
       return toast.error(
         language === "te"
           ? "6 అంకెల OTP నమోదు చేయండి"
           : "Enter the 6-digit OTP",
       );
-    setWorking(true);
-    const supabase = getSupabaseBrowserClient();
-    if (supabase) {
-      const { error } = await supabase.auth.verifyOtp({
-        phone: `+91${phone.replace(/\D/g, "")}`,
-        token: otp,
-        type: "sms",
-      });
-      if (error) {
-        setWorking(false);
-        return toast.error(error.message);
-      }
-    } else if (otp !== "123456") {
-      setWorking(false);
-      return toast.error("Demo OTP is 123456");
     }
-    saveSessionProfile({
-      authenticated: true,
-      entryType: "login",
-      role,
-      phone: phone.replace(/\D/g, ""),
-      language,
-    });
-    setWorking(false);
-    router.push(role === "owner" ? "/owner" : "/dashboard");
+
+    if (!confirmationResult) {
+      return toast.error(
+        language === "te"
+          ? "ముందుగా OTP పంపండి"
+          : "Please request an OTP first",
+      );
+    }
+
+    setWorking(true);
+
+    try {
+      const result = await verifyPhoneOTP(confirmationResult, otp);
+
+      const firebaseUser = result.user;
+
+      console.log("Firebase user:", firebaseUser);
+
+      saveSessionProfile({
+        authenticated: true,
+        entryType: "login",
+        role,
+        phone: phone.replace(/\D/g, ""),
+        language,
+      });
+
+      toast.success(
+        language === "te" ? "విజయవంతంగా లాగిన్ అయ్యారు" : "Login successful",
+      );
+
+      router.push(role === "owner" ? "/owner" : "/dashboard");
+    } catch (error) {
+      console.error("Firebase OTP verification error:", error);
+
+      toast.error(
+        language === "te"
+          ? "తప్పు OTP. మళ్లీ ప్రయత్నించండి"
+          : "Invalid OTP. Please try again",
+      );
+    } finally {
+      setWorking(false);
+    }
   }
 
   return (
@@ -145,13 +178,14 @@ export default function LoginPage() {
         </div>
       </section>
       <section className="login-panel">
+        <div id="recaptcha-container" />
         <div className="login-card">
           <button
             type="button"
             className="language-button"
             onClick={toggleLanguage}
           >
-            <Languages size={60} /> {text.language}
+            <Languages size={18} /> {text.language}
           </button>
           <p className="eyebrow">{text.eyebrow}</p>
           <h2>{text.title}</h2>
@@ -239,7 +273,12 @@ export default function LoginPage() {
               <button
                 type="button"
                 className="text-button"
-                onClick={() => setStep("phone")}
+                onClick={() => {
+                  resetRecaptcha();
+                  setStep("phone");
+                  setOtp("");
+                  setConfirmationResult(null);
+                }}
               >
                 <ArrowLeft /> {text.change}
               </button>
