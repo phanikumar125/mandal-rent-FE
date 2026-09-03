@@ -46,14 +46,14 @@ export function LocationPicker({
 
   useEffect(() => {
     if (!current.districtCode) return;
-    fetch(`/api/locations?level=mandals&district=${current.districtCode}`)
+    fetch(`/api/locations?level=mandals&districtId=${current.districtCode}`)
       .then((response) => response.json())
       .then((data) => setMandals(data.items ?? []));
   }, [current.districtCode]);
 
   useEffect(() => {
     if (!current.districtCode || !current.mandalCode) return;
-    fetch(`/api/locations?level=villages&district=${current.districtCode}&mandal=${current.mandalCode}`)
+    fetch(`/api/locations?level=villages&districtId=${current.districtCode}&mandalId=${current.mandalCode}`)
       .then((response) => response.json())
       .then((data) => setVillages(data.items ?? []));
   }, [current.districtCode, current.mandalCode]);

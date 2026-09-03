@@ -1,13 +1,13 @@
 # MandalRent frontend
 
-Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, Magic UI, and Supabase.
+Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, Magic UI, and Supabase Postgres/Storage.
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` to connect Supabase. With no keys, all main journeys remain usable through the local demo adapter; use OTP `123456`.
+Copy `.env.example` to `.env.local` to connect Supabase. Authentication uses the server-side MandalRent mobile+PIN credential and session APIs.
 
 Useful checks:
 

@@ -1,5 +1,5 @@
-import MarketplaceExperience from "../../_components/marketplace-experience";
+import { FarmerMarketplace } from "../../_components/farmer-marketplace";
 
 export default function MarketplacePage() {
-  return <MarketplaceExperience embedded />;
+  return <FarmerMarketplace />;
 }

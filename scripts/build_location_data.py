@@ -138,24 +138,23 @@ do $$
 declare
   payload jsonb := $locations${compact}$locations$::jsonb;
 begin
-  insert into public.districts (name, lgd_code)
-  select distinct item->>'district', (item->>'districtCode')::integer
+  insert into public.districts (name)
+  select distinct item->>'district'
   from jsonb_array_elements(payload) item
-  on conflict (lgd_code) do update set name = excluded.name;
+  on conflict (name) do nothing;
 
-  insert into public.mandals (district_id, name, lgd_code)
-  select distinct d.id, item->>'mandal', (item->>'mandalCode')::integer
+  insert into public.mandals (district_id, name)
+  select distinct d.id, item->>'mandal'
   from jsonb_array_elements(payload) item
-  join public.districts d on d.lgd_code = (item->>'districtCode')::integer
-  on conflict (lgd_code) do update
-  set district_id = excluded.district_id, name = excluded.name;
+  join public.districts d on d.name = item->>'district'
+  on conflict (district_id, name) do nothing;
 
-  insert into public.villages (mandal_id, name, lgd_code)
-  select distinct m.id, item->>'village', (item->>'villageCode')::integer
+  insert into public.villages (mandal_id, name)
+  select distinct m.id, item->>'village'
   from jsonb_array_elements(payload) item
-  join public.mandals m on m.lgd_code = (item->>'mandalCode')::integer
-  on conflict (lgd_code) do update
-  set mandal_id = excluded.mandal_id, name = excluded.name;
+  join public.districts d on d.name = item->>'district'
+  join public.mandals m on m.district_id = d.id and m.name = item->>'mandal'
+  on conflict (mandal_id, name) do nothing;
 end;
 $$;
 """
