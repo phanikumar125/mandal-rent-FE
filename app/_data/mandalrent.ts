@@ -411,7 +411,7 @@ export const publicCopy = {
     loginHeader: "Farmer / Owner login",
     loginSubtitle: "Use phone and password to continue.",
     registerTitle: "Create account",
-    registerHeader: "Farmer / Owner signup",
+    registerHeader: "Farmer / Owner registration",
     registerSubtitle: "Pick Farmer or Owner, then continue to the right setup.",
     backHome: "Back home",
     alreadyHaveAccount: "Already have an account?",

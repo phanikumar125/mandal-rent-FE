@@ -1003,11 +1003,6 @@ svg {
   border-radius: 10px !important;
   font-weight: 760;
 }
-.otp-slot {
-  width: 51px !important;
-  height: 53px !important;
-  font-size: 20px !important;
-}
 .secure-note {
   margin-top: 24px;
   padding-top: 18px;
@@ -1882,9 +1877,6 @@ svg {
   }
   .role-choice small {
     display: none;
-  }
-  .otp-slot {
-    width: 44px !important;
   }
   .owner-shell {
     grid-template-columns: 1fr;
