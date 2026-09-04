@@ -32,6 +32,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { LocationPicker, type LocationValue } from "./location-picker";
 import { equipmentCatalog } from "@/app/_data/catalog";
 import { useLanguage } from "./language-toggle";
+import { NotificationBell } from "./notification-bell";
 
 type Mode = "rent" | "purchase";
 type ApiListing = Record<string, unknown>;
@@ -250,6 +251,9 @@ export function FarmerMarketplace() {
   const text = copy[language];
   const [mode, setMode] = useState<Mode>("rent");
   const [location, setLocation] = useState<LocationValue>(emptyLocation);
+  const [appliedLocation, setAppliedLocation] = useState<LocationValue | null>(
+    null,
+  );
   const [profile, setProfile] = useState<FarmerProfile>({});
   const [category, setCategory] = useState("All");
   const [query, setQuery] = useState("");
@@ -262,6 +266,7 @@ export function FarmerMarketplace() {
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "card">("upi");
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [workingRentalId, setWorkingRentalId] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -309,6 +314,9 @@ export function FarmerMarketplace() {
     const wantedDistrict = location.districtCode || profile.district_id || "";
     const wantedMandal = location.mandalCode || profile.mandal_id || "";
     const wantedVillage = location.villageCode || profile.village_id || "";
+    const searchDistrict = appliedLocation?.districtCode ?? "";
+    const searchMandal = appliedLocation?.mandalCode ?? "";
+    const searchVillage = appliedLocation?.villageCode ?? "";
     const normalizedQuery = query.trim().toLowerCase();
     return listings
       .filter((item) => {
@@ -321,7 +329,18 @@ export function FarmerMarketplace() {
           `${item.title} ${item.category} ${item.location}`
             .toLowerCase()
             .includes(normalizedQuery);
-        return modeMatches && categoryMatches && queryMatches;
+        const locationMatches =
+          !appliedLocation ||
+          (searchVillage
+            ? item.villageId === searchVillage
+            : searchMandal
+              ? item.mandalId === searchMandal
+              : searchDistrict
+                ? item.districtId === searchDistrict
+                : true);
+        return (
+          modeMatches && categoryMatches && queryMatches && locationMatches
+        );
       })
       .sort((a, b) => {
         const score = (item: MarketplaceListing) =>
@@ -336,6 +355,7 @@ export function FarmerMarketplace() {
       });
   }, [
     category,
+    appliedLocation,
     listings,
     location.districtCode,
     location.mandalCode,
@@ -361,6 +381,12 @@ export function FarmerMarketplace() {
     if (!selected) return;
     if (mode === "rent" && (!startDate || !endDate || endDate < startDate))
       return toast.error("Choose a valid rental date range");
+    if (mode === "rent") {
+      const months = [...new Set([startDate.slice(0, 7), endDate.slice(0, 7)])];
+      const availability = await Promise.all(months.map((value) => fetch(`/api/listings/${selected.id}/availability?month=${value}`, { cache: "no-store" }).then(async (response) => response.ok ? response.json() as Promise<{ blocks?: Array<{ start_date: string; end_date: string }>; bookings?: Array<{ rental_start: string | null; rental_end: string | null }> }> : null)));
+      const unavailable = availability.some((body) => Boolean(body && ([...(body.blocks ?? []), ...(body.bookings ?? []).map((booking) => ({ start_date: booking.rental_start, end_date: booking.rental_end }))].some((range) => range.start_date && range.end_date && range.start_date <= endDate && range.end_date >= startDate))));
+      if (unavailable) return toast.error("Equipment is unavailable for the selected dates.");
+    }
     setPaying(true);
     try {
       const response = await fetch("/api/orders", {
@@ -443,6 +469,22 @@ export function FarmerMarketplace() {
     }
   }
 
+  async function cancelRental(id: string) {
+    setWorkingRentalId(id);
+    try {
+      const response = await fetch(`/api/bookings/${id}/cancel`, { method: "POST" });
+      const body = (await response.json().catch(() => ({}))) as { message?: string; refundRequired?: boolean };
+      if (!response.ok) throw new Error(body.message ?? "Unable to cancel booking");
+      const ordersResponse = await fetch("/api/orders", { cache: "no-store" });
+      if (ordersResponse.ok) setOrders(((await ordersResponse.json()) as { orders?: ApiOrder[] }).orders ?? []);
+      toast.success(body.refundRequired ? "Booking cancelled. Refund review is required." : "Booking cancelled.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to cancel booking");
+    } finally {
+      setWorkingRentalId("");
+    }
+  }
+
   const duration =
     mode === "rent" && startDate && endDate && endDate >= startDate
       ? Math.floor(
@@ -471,6 +513,7 @@ export function FarmerMarketplace() {
           </span>
         </Link>
         <nav className="header-actions">
+          <NotificationBell />
           <button onClick={toggleLanguage} className="language-button">
             <Languages /> {text.language}
           </button>
@@ -532,8 +575,17 @@ export function FarmerMarketplace() {
             <small>{location.district || text.all}</small>
           </span>
         </div>
-        <LocationPicker value={location} onChange={setLocation} />
-        <Button className="location-submit" onClick={() => setQuery(query)}>
+        <LocationPicker
+          value={location}
+          onChange={(nextLocation) => {
+            setLocation(nextLocation);
+            setAppliedLocation(null);
+          }}
+        />
+        <Button
+          className="location-submit"
+          onClick={() => setAppliedLocation({ ...location })}
+        >
           {text.search}
         </Button>
       </section>
@@ -549,15 +601,19 @@ export function FarmerMarketplace() {
           <div className="rental-history">
             {orders.map((order) => (
               <article className="request-row" key={String(order.id)}>
+                <img className="rental-history-image" src={String(order.listing_image ?? fallbackImage)} alt={String(order.listing_title ?? "Equipment")} />
                 <strong>{String(order.listing_title ?? "Equipment")}</strong>
                 <small>
-                  {String(order.rental_start ?? "Purchase")}
+                  Owner: {String(order.owner_name ?? "Owner")} · {String(order.rental_start ?? "Purchase")}
                   {order.rental_end
                     ? " → " + String(order.rental_end)
                     : ""} · {String(order.rental_status)} ·{" "}
                   {String(order.payment_status)}
                 </small>
                 <span>{rupees(Number(order.total_amount ?? 0))}</span>
+                <div className="rental-timeline" aria-label="Rental progress"><span className={String(order.payment_status) === "paid" ? "is-done" : ""}>Payment successful</span><span className={["confirmed", "in_progress", "completed"].includes(String(order.rental_status)) ? "is-done" : ""}>Booking confirmed</span><span className={["in_progress", "completed"].includes(String(order.rental_status)) ? "is-done" : ""}>Rental started</span><span className={String(order.rental_status) === "completed" ? "is-done" : ""}>Rental completed</span></div>
+                {String(order.rental_status) === "cancelled" ? <p className="rental-cancelled-note">Cancelled{String(order.payment_status) === "paid" ? " · Refund required" : ""}</p> : null}
+                {["requested", "accepted", "confirmed"].includes(String(order.rental_status)) ? <Button size="sm" variant="outline" disabled={workingRentalId === String(order.id)} onClick={() => void cancelRental(String(order.id))}>Cancel booking</Button> : null}
               </article>
             ))}
           </div>
@@ -666,9 +722,7 @@ export function FarmerMarketplace() {
                     )}
                   </strong>
                   <small>
-                    {mode === "rent"
-                      ? item.rentUnit ?? "day"
-                      : "Total"}
+                    {mode === "rent" ? (item.rentUnit ?? "day") : "Total"}
                   </small>
                   <Button size="lg" onClick={() => setSelected(item)}>
                     {mode === "rent" ? text.requestRent : text.requestBuy}

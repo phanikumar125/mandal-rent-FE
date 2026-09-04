@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser, getSupabaseAdmin } from "@/lib/server-auth";
 import { createRazorpayOrder, razorpayKeyId } from "@/lib/razorpay";
 import { calculatePaymentSplit } from "@/lib/commission";
+import { isValidIsoDate } from "@/lib/date-validation";
 
 function fail(message: string, status: number) {
   return NextResponse.json({ error: "ORDER_FAILED", message }, { status });
-}
-
-function validDate(value: unknown) {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 }
 
 function daysBetween(start: string, end: string) {
@@ -31,13 +28,16 @@ export async function GET() {
     const orders = data ?? [];
     const listingIds = [...new Set(orders.map((order) => order.listing_id))];
     const profileIds = [...new Set(orders.flatMap((order) => [order.requester_id, order.owner_id]))];
-    const [{ data: listings, error: listingsError }, { data: profiles, error: profilesError }] = await Promise.all([
+    const [{ data: listings, error: listingsError }, { data: profiles, error: profilesError }, { data: images, error: imagesError }] = await Promise.all([
       listingIds.length ? supabase.from("listings").select("id, title").in("id", listingIds) : Promise.resolve({ data: [], error: null }),
       profileIds.length ? supabase.from("profiles").select("id, full_name").in("id", profileIds) : Promise.resolve({ data: [], error: null }),
+      listingIds.length ? supabase.from("listing_images").select("listing_id, storage_path, is_primary, sort_order").in("listing_id", listingIds).order("is_primary", { ascending: false }).order("sort_order", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     ]);
-    if (listingsError || profilesError) throw listingsError ?? profilesError;
+    if (listingsError || profilesError || imagesError) throw listingsError ?? profilesError ?? imagesError;
     const listingNames = new Map((listings ?? []).map((listing) => [listing.id, listing.title]));
     const profileNames = new Map((profiles ?? []).map((profile) => [profile.id, profile.full_name]));
+    const imagePaths = new Map<string, string>();
+    for (const image of images ?? []) if (!imagePaths.has(image.listing_id)) imagePaths.set(image.listing_id, image.storage_path);
     const bookingIds = orders.map((order) => order.id);
     const { data: payments, error: paymentsError } = bookingIds.length
       ? await supabase.from("payments").select("booking_request_id, rental_amount, delivery_charge, gross_amount, platform_commission, owner_amount, status, payout_status, gateway_payment_id").in("booking_request_id", bookingIds)
@@ -50,6 +50,7 @@ export async function GET() {
         listing_title: listingNames.get(order.listing_id) ?? "Equipment",
         farmer_name: profileNames.get(order.requester_id) ?? "Farmer",
         owner_name: profileNames.get(order.owner_id) ?? "Owner",
+        listing_image: imagePaths.has(order.listing_id) ? supabase.storage.from("equipment-images").getPublicUrl(imagePaths.get(order.listing_id)!).data.publicUrl : null,
         payment: paymentByBooking.get(order.id) ?? null,
       })),
     });
@@ -78,7 +79,8 @@ export async function POST(request: NextRequest) {
 
     const startDate = body.mode === "rent" ? (body.startDate ?? body.date) : null;
     const endDate = body.mode === "rent" ? (body.endDate ?? body.startDate ?? body.date) : null;
-    if (body.mode === "rent" && (!startDate || !endDate || !validDate(startDate) || !validDate(endDate) || endDate < startDate)) return fail("Choose a valid rental date range", 400);
+    const today = new Date().toISOString().slice(0, 10);
+    if (body.mode === "rent" && (!startDate || !endDate || !isValidIsoDate(startDate) || !isValidIsoDate(endDate) || endDate < startDate || startDate < today)) return fail("Choose a valid future rental date range", 400);
 
     const supabase = getSupabaseAdmin();
     const { data: listing, error: listingError } = await supabase.from("listings").select("id, owner_id, listing_mode, price, price_unit, sale_price, delivery_available, delivery_charge, available, status, title").eq("id", body.listingId).maybeSingle();
@@ -95,9 +97,14 @@ export async function POST(request: NextRequest) {
     const split = calculatePaymentSplit(rentalAmount, deliveryCharge);
     if (!Number.isFinite(unitPrice) || unitPrice <= 0 || split.grossAmount <= 0) return fail("Equipment pricing is unavailable", 400);
 
-    const { data: activeRequests, error: activeError } = await supabase.from("booking_requests").select("id, rental_start, rental_end, rental_status").eq("listing_id", listing.id).in("rental_status", ["requested", "accepted", "confirmed"]);
+    const { data: activeRequests, error: activeError } = await supabase.from("booking_requests").select("id, rental_start, rental_end, rental_status").eq("listing_id", listing.id).in("rental_status", ["requested", "accepted", "confirmed", "in_progress"]);
     if (activeError) throw activeError;
-    if (body.mode === "rent" && activeRequests?.some((item) => item.rental_start && item.rental_end && item.rental_start <= endDate! && item.rental_end >= startDate!)) return fail("Those dates are already requested", 409);
+    if (body.mode === "rent" && activeRequests?.some((item) => item.rental_start && item.rental_end && item.rental_start <= endDate! && item.rental_end >= startDate!)) return fail("Equipment is unavailable for the selected dates.", 409);
+    if (body.mode === "rent") {
+      const { data: blockedDates, error: blockedDatesError } = await supabase.from("listing_unavailability").select("id").eq("listing_id", listing.id).lte("start_date", endDate!).gte("end_date", startDate!).limit(1);
+      if (blockedDatesError) throw blockedDatesError;
+      if (blockedDates?.length) return fail("Equipment is unavailable for the selected dates.", 409);
+    }
 
     const { data: booking, error: bookingError } = await supabase.from("booking_requests").insert({
       listing_id: listing.id,
@@ -156,7 +163,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ bookingRequest: booking, payment: { ...payment, key_id: razorpayKeyId(), checkout_amount: razorpayOrder.amount } }, { status: 201 });
   } catch (error) {
     console.error("Create rental request API error", error);
-    const message = error instanceof Error && error.message.includes("configuration") ? "Online payment is not configured yet" : "Unable to create rental request";
-    return fail(message, message.includes("configured") ? 503 : 500);
+    const unavailable = error instanceof Error && error.message.toLowerCase().includes("equipment is unavailable");
+    const message = unavailable ? "Equipment is unavailable for the selected dates." : error instanceof Error && error.message.includes("configuration") ? "Online payment is not configured yet" : "Unable to create rental request";
+    return fail(message, unavailable ? 409 : message.includes("configured") ? 503 : 500);
   }
 }

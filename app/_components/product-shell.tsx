@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Heart,
-  Home,
-  Search,
-  Sprout,
-  UserRound,
-} from "lucide-react";
+import { Heart, Home, Search, Tractor, UserRound } from "lucide-react";
 import { productCopy } from "../_data/product";
 import { useLanguage } from "./language-toggle";
 
@@ -16,15 +10,20 @@ export function Brand() {
   return (
     <Link href="/" className="brand" aria-label="MandalRent home">
       <span className="brand-mark" aria-hidden="true">
-        MR
-        <Sprout className="brand-leaf" size={16} strokeWidth={2.5} />
+        <Tractor size={24} strokeWidth={2.2} />
       </span>
-      <span className="brand-name">MandalRent</span>
+      <span className="brand-name">
+        Mandal<span>Rent</span>
+      </span>
     </Link>
   );
 }
 
-export function ProductHeader({ activeVersion }: { activeVersion: "v1" | "v2" }) {
+export function ProductHeader({
+  activeVersion,
+}: {
+  activeVersion: "v1" | "v2";
+}) {
   const { language, toggleLanguage } = useLanguage();
   const copy = productCopy[language];
 
@@ -51,7 +50,11 @@ export function ProductHeader({ activeVersion }: { activeVersion: "v1" | "v2" })
         </nav>
 
         <div className="header-actions">
-          <button type="button" className="language-button" onClick={toggleLanguage}>
+          <button
+            type="button"
+            className="language-button"
+            onClick={toggleLanguage}
+          >
             {copy.languageButton}
           </button>
           <Link href="/login" className="signin-link">
@@ -64,14 +67,28 @@ export function ProductHeader({ activeVersion }: { activeVersion: "v1" | "v2" })
   );
 }
 
-export function MobileBottomNav({ active = "discover" }: { active?: "home" | "discover" | "favorites" | "profile" }) {
+export function MobileBottomNav({
+  active = "discover",
+}: {
+  active?: "home" | "discover" | "favorites" | "profile";
+}) {
   const pathname = usePathname();
   const { language } = useLanguage();
   const copy = productCopy[language];
   const items = [
     { id: "home", label: copy.home, href: "/", icon: Home },
-    { id: "discover", label: copy.discover, href: pathname === "/v2" ? "/v2" : "/", icon: Search },
-    { id: "favorites", label: copy.favorites, href: "/marketplace", icon: Heart },
+    {
+      id: "discover",
+      label: copy.discover,
+      href: pathname === "/v2" ? "/v2" : "/",
+      icon: Search,
+    },
+    {
+      id: "favorites",
+      label: copy.favorites,
+      href: "/marketplace",
+      icon: Heart,
+    },
     { id: "profile", label: copy.profile, href: "/profile", icon: UserRound },
   ] as const;
 
@@ -86,7 +103,11 @@ export function MobileBottomNav({ active = "discover" }: { active?: "home" | "di
             className={active === item.id ? "is-active" : undefined}
             aria-current={active === item.id ? "page" : undefined}
           >
-            <Icon size={22} strokeWidth={active === item.id ? 2.5 : 1.9} aria-hidden="true" />
+            <Icon
+              size={22}
+              strokeWidth={active === item.id ? 2.5 : 1.9}
+              aria-hidden="true"
+            />
             <span>{item.label}</span>
           </Link>
         );

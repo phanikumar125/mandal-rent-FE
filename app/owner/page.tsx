@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Bell,
+  CalendarDays,
   CheckCircle2,
   ClipboardList,
   IndianRupee,
@@ -12,11 +12,13 @@ import {
   LogOut,
   MapPin,
   PackageCheck,
+  Play,
   Save,
   Tractor,
   Upload,
   WalletCards,
   X,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BorderBeam } from "@/components/ui/border-beam";
@@ -31,6 +33,7 @@ import {
 } from "@/app/_components/location-picker";
 import { equipmentCatalog } from "@/app/_data/catalog";
 import { useLanguage } from "@/app/_components/language-toggle";
+import { NotificationBell } from "@/app/_components/notification-bell";
 
 type Section = "overview" | "equipment" | "requests" | "payments";
 type ListingMode = "rent" | "sale" | "both";
@@ -170,6 +173,7 @@ export default function OwnerPage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [working, setWorking] = useState(false);
+  const [workingRequestId, setWorkingRequestId] = useState("");
 
   async function loadOwnerData() {
     const [listingsResponse, ordersResponse] = await Promise.all([
@@ -263,13 +267,45 @@ export default function OwnerPage() {
       title,
     ],
   );
-  const paidTotal = requests
-    .filter((request) => request.paymentStatus === "paid")
-    .reduce((sum, request) => sum + request.ownerAmount, 0);
+  const earnings = useMemo(() => {
+    const valid = requests.filter((request) => request.paymentStatus === "paid" && request.rentalStatus !== "cancelled");
+    return {
+      pending: valid.filter((request) => request.payoutStatus === "pending").reduce((sum, request) => sum + request.ownerAmount, 0),
+      eligible: valid.filter((request) => request.payoutStatus === "eligible").reduce((sum, request) => sum + request.ownerAmount, 0),
+      paid: valid.filter((request) => request.payoutStatus === "paid").reduce((sum, request) => sum + request.ownerAmount, 0),
+    };
+  }, [requests]);
+
+  async function updateRequestStatus(id: string, status: "in_progress" | "completed" | "cancelled") {
+    setWorkingRequestId(id);
+    try {
+      const response = await fetch(status === "cancelled" ? `/api/bookings/${id}/cancel` : `/api/bookings/${id}/status`, {
+        method: status === "cancelled" ? "POST" : "PATCH",
+        headers: status === "cancelled" ? undefined : { "Content-Type": "application/json" },
+        body: status === "cancelled" ? undefined : JSON.stringify({ status }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string; refundRequired?: boolean };
+      if (!response.ok) throw new Error(body.message ?? "Unable to update booking");
+      await loadOwnerData();
+      toast.success(status === "completed" ? "Rental completed. Payout is eligible for admin review." : status === "in_progress" ? "Rental started." : body.refundRequired ? "Booking cancelled. Refund review is required." : "Booking cancelled.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to update booking");
+    } finally {
+      setWorkingRequestId("");
+    }
+  }
 
   function chooseFiles(event: ChangeEvent<HTMLInputElement>) {
-    const next = Array.from(event.target.files ?? [])
-      .filter((file) => file.type.startsWith("image/"))
+    const incoming = Array.from(event.target.files ?? []);
+    const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
+    if (incoming.some((file) => !allowed.has(file.type))) {
+      toast.error("Only JPG, PNG, or WebP images are supported");
+    }
+    if (incoming.some((file) => file.size > 5 * 1024 * 1024)) {
+      toast.error("Each equipment image must be 5 MB or smaller");
+    }
+    const next = incoming
+      .filter((file) => allowed.has(file.type) && file.size <= 5 * 1024 * 1024)
       .slice(0, 5);
     previews.forEach((url) => URL.revokeObjectURL(url));
     setFiles(next);
@@ -436,9 +472,7 @@ export default function OwnerPage() {
                     : text.payments}
             </h1>
           </div>
-          <button aria-label="Notifications">
-            <Bell />
-          </button>
+          <NotificationBell />
         </header>
         {section === "overview" && (
           <section className="owner-overview">
@@ -463,7 +497,7 @@ export default function OwnerPage() {
             <div className="owner-overview-card">
               <WalletCards />
               <span>{text.payments}</span>
-              <strong>{rupees(paidTotal)}</strong>
+              <strong>{rupees(earnings.paid)}</strong>
               <Button onClick={() => setSection("payments")}>
                 {text.payments}
               </Button>
@@ -499,6 +533,7 @@ export default function OwnerPage() {
                       {String(listing.district ?? "")} ·{" "}
                       {String(listing.status)}
                     </small>
+                    <Link className="owner-availability-link" href={`/owner/listings/${String(listing.id)}/availability`}><CalendarDays size={14} /> Availability</Link>
                     {listing.status === "live" && (
                       <Button
                         size="sm"
@@ -839,6 +874,7 @@ export default function OwnerPage() {
                 ? `${requests.length} ${text.requests}`
                 : text.requestsEmpty}
             </h2>
+            {requests.length ? <div className="owner-earnings-summary"><span>Pending <strong>{rupees(earnings.pending)}</strong></span><span>Eligible <strong>{rupees(earnings.eligible)}</strong></span><span>Paid <strong>{rupees(earnings.paid)}</strong></span></div> : null}
             {requests.map((request) => (
               <div className="request-row" key={request.id}>
                 <strong>
@@ -852,6 +888,8 @@ export default function OwnerPage() {
                   · {request.rentalStatus} · {request.paymentStatus}
                 </small>
                 <span>{rupees(request.totalAmount)}</span>
+                <div className="owner-booking-details"><span>Rental <strong>{rupees(request.rentalAmount)}</strong></span><span>Delivery <strong>{rupees(request.deliveryCharge)}</strong></span><span>Commission <strong>{rupees(request.platformCommission)}</strong></span><span>Owner amount <strong>{rupees(request.ownerAmount)}</strong></span><span>Payout <strong>{request.payoutStatus}</strong></span></div>
+                <div className="owner-booking-actions">{request.rentalStatus === "confirmed" ? <Button size="sm" disabled={workingRequestId === request.id} onClick={() => void updateRequestStatus(request.id, "in_progress")}><Play size={15} /> Start rental</Button> : null}{request.rentalStatus === "in_progress" ? <Button size="sm" disabled={workingRequestId === request.id} onClick={() => void updateRequestStatus(request.id, "completed")}><CheckCircle2 size={15} /> Complete rental</Button> : null}{["requested", "accepted", "confirmed"].includes(request.rentalStatus) ? <Button size="sm" variant="outline" disabled={workingRequestId === request.id} onClick={() => void updateRequestStatus(request.id, "cancelled")}><Ban size={15} /> Cancel booking</Button> : null}</div>
               </div>
             ))}
           </section>
@@ -859,9 +897,10 @@ export default function OwnerPage() {
         {section === "payments" && (
           <section className="owner-empty-state">
             <WalletCards />
-            <h2>{paidTotal ? rupees(paidTotal) : text.paymentsEmpty}</h2>
+            <h2>{earnings.paid ? rupees(earnings.paid) : text.paymentsEmpty}</h2>
+            <div className="owner-earnings-summary"><span>Pending <strong>{rupees(earnings.pending)}</strong></span><span>Eligible <strong>{rupees(earnings.eligible)}</strong></span><span>Paid <strong>{rupees(earnings.paid)}</strong></span></div>
             {requests
-              .filter((request) => request.paymentStatus === "paid")
+              .filter((request) => request.paymentStatus === "paid" && request.rentalStatus !== "cancelled")
               .map((request) => (
                 <div className="request-row" key={request.id}>
                   <span>{text.paid}</span>

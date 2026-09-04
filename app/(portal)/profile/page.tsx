@@ -1,417 +1,514 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, MapPin, Save, UserRound } from "lucide-react";
+import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useLanguage } from "../../_components/language-toggle";
 import {
-  districtLocations,
-  getMandals,
-  getVillages,
-} from "../../_data/mandalrent";
-import { readSessionProfile, saveSessionProfile } from "../../_data/session";
+  readSessionProfile,
+  saveSessionProfile,
+  type ProfileSession,
+} from "../../_data/session";
+
+type LocationItem = { code: string; name: string; count?: number };
+type ApiProfile = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  role: "farmer" | "owner" | "admin";
+  preferred_language: "en" | "te";
+  city: string;
+  pincode: string;
+  district_id: string | null;
+  mandal_id: string | null;
+  village_id: string | null;
+  district?: string;
+  mandal?: string;
+  village?: string;
+};
 
 export default function ProfilePage() {
-  const { language: uiLanguage, toggleLanguage, setLanguage } = useLanguage();
-  const savedProfile = useMemo(() => readSessionProfile(), []);
-  const [district, setDistrict] = useState(savedProfile.district);
-  const [mandal, setMandal] = useState(savedProfile.mandal);
-  const [village, setVillage] = useState(savedProfile.village);
-  const [role, setRole] = useState<"farmer" | "owner">(savedProfile.role);
-  const [fullName, setFullName] = useState(
-    savedProfile.fullName || "Anil Reddy",
+  const { language, toggleLanguage, setLanguage } = useLanguage();
+  const [savedProfile, setSavedProfile] = useState<ProfileSession>(() =>
+    readSessionProfile(),
   );
-  const [phone, setPhone] = useState(savedProfile.phone || "9876543210");
-  const [landSize, setLandSize] = useState(
-    savedProfile.farmerProfile?.landSize ?? "",
-  );
-  const [cropType, setCropType] = useState(
-    savedProfile.farmerProfile?.cropType ?? "",
-  );
-  const [machineryNeed, setMachineryNeed] = useState(
-    savedProfile.farmerProfile?.machineryNeed ?? "",
-  );
-  const [equipmentType, setEquipmentType] = useState(
-    savedProfile.ownerProfile?.equipmentType ?? "",
-  );
-  const [machineCount, setMachineCount] = useState(
-    savedProfile.ownerProfile?.machineCount ?? "",
-  );
-  const [serviceArea, setServiceArea] = useState(
-    savedProfile.ownerProfile?.serviceArea ?? "",
-  );
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [city, setCity] = useState("");
+  const [pincode, setPincode] = useState("");
+  const [role, setRole] = useState<"farmer" | "owner">("farmer");
+  const [districtId, setDistrictId] = useState("");
+  const [district, setDistrict] = useState("");
+  const [mandalId, setMandalId] = useState("");
+  const [mandal, setMandal] = useState("");
+  const [villageId, setVillageId] = useState("");
+  const [village, setVillage] = useState("");
+  const [landSize, setLandSize] = useState("");
+  const [cropType, setCropType] = useState("");
+  const [machineryNeed, setMachineryNeed] = useState("");
+  const [equipmentType, setEquipmentType] = useState("");
+  const [machineCount, setMachineCount] = useState("");
+  const [serviceArea, setServiceArea] = useState("");
+  const [districts, setDistricts] = useState<LocationItem[]>([]);
+  const [mandals, setMandals] = useState<LocationItem[]>([]);
+  const [villages, setVillages] = useState<LocationItem[]>([]);
+  const [loadedMandalDistrictId, setLoadedMandalDistrictId] = useState("");
+  const [loadedVillageMandalId, setLoadedVillageMandalId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  const mandalOptions = useMemo(() => getMandals(district), [district]);
+  useEffect(() => {
+    let active = true;
+    async function loadProfile() {
+      try {
+        const [profileResponse, districtsResponse] = await Promise.all([
+          fetch("/api/profile", { cache: "no-store" }),
+          fetch("/api/locations?level=districts", { cache: "no-store" }),
+        ]);
+        if (!profileResponse.ok || !districtsResponse.ok)
+          throw new Error("Unable to load profile");
+        const profileData = (await profileResponse.json()) as {
+          profile: ApiProfile;
+        };
+        const districtsData = (await districtsResponse.json()) as {
+          items?: LocationItem[];
+        };
+        if (!active) return;
+        const remote = profileData.profile;
+        const local = readSessionProfile();
+        setSavedProfile(local);
+        setFullName(remote.full_name || local.fullName);
+        setPhone(remote.phone ?? local.phone);
+        setCity(remote.city);
+        setPincode(remote.pincode);
+        setRole(remote.role === "owner" ? "owner" : "farmer");
+        setDistrictId(remote.district_id ?? local.districtId ?? "");
+        setDistrict(remote.district ?? local.district);
+        setMandalId(remote.mandal_id ?? local.mandalId ?? "");
+        setMandal(remote.mandal ?? local.mandal);
+        setVillageId(remote.village_id ?? local.villageId ?? "");
+        setVillage(remote.village ?? local.village);
+        setLandSize(local.farmerProfile?.landSize ?? "");
+        setCropType(local.farmerProfile?.cropType ?? "");
+        setMachineryNeed(local.farmerProfile?.machineryNeed ?? "");
+        setEquipmentType(local.ownerProfile?.equipmentType ?? "");
+        setMachineCount(local.ownerProfile?.machineCount ?? "");
+        setServiceArea(local.ownerProfile?.serviceArea ?? "");
+        setDistricts(districtsData.items ?? []);
+      } catch {
+        toast.error("Unable to load your profile details");
+      }
+    }
+    void loadProfile();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!districtId) return;
+    const controller = new AbortController();
+    fetch(
+      `/api/locations?level=mandals&districtId=${encodeURIComponent(districtId)}`,
+      { signal: controller.signal },
+    )
+      .then((response) => response.json())
+      .then((data) => {
+        setMandals(data.items ?? []);
+        setLoadedMandalDistrictId(districtId);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [districtId]);
+
+  useEffect(() => {
+    if (!districtId || !mandalId) return;
+    const controller = new AbortController();
+    fetch(
+      `/api/locations?level=villages&districtId=${encodeURIComponent(districtId)}&mandalId=${encodeURIComponent(mandalId)}`,
+      { signal: controller.signal },
+    )
+      .then((response) => response.json())
+      .then((data) => {
+        setVillages(data.items ?? []);
+        setLoadedVillageMandalId(mandalId);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [districtId, mandalId]);
+
+  const mandalOptions = useMemo(
+    () => (loadedMandalDistrictId === districtId ? mandals : []),
+    [districtId, loadedMandalDistrictId, mandals],
+  );
   const villageOptions = useMemo(
-    () => getVillages(district, mandal),
-    [district, mandal],
+    () => (loadedVillageMandalId === mandalId ? villages : []),
+    [loadedVillageMandalId, mandalId, villages],
   );
+  const isTelugu = language === "te";
+  const text = {
+    title: isTelugu ? "Profile and location" : "Profile and location",
+    subtitle: isTelugu
+      ? "Update your account details"
+      : "Set up your account details",
+    toggle: isTelugu ? "English" : "తెలుగు",
+    name: isTelugu ? "Full name" : "Full name",
+    phone: isTelugu ? "Phone number" : "Phone number",
+    city: isTelugu ? "City" : "City",
+    pincode: isTelugu ? "Pincode" : "Pincode",
+    role: isTelugu ? "You are" : "You are",
+    language: isTelugu ? "Language" : "Language",
+    district: isTelugu ? "District" : "District",
+    mandal: isTelugu ? "Mandal" : "Mandal",
+    village: isTelugu ? "Village" : "Village",
+    farmer: isTelugu ? "Farmer" : "Farmer",
+    owner: isTelugu ? "Owner" : "Equipment owner",
+    save: "Save profile details",
+    saved: "Profile details saved",
+    location: "Saved location",
+    summary: "Account summary",
+    noLocation: "Select your farm location",
+  };
 
-  function handleSaveProfile(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    saveSessionProfile({
-      role,
-      fullName,
-      phone,
-      language: uiLanguage,
-      district,
-      mandal,
-      village,
-      entryType: "register",
-      farmerProfile:
-        role === "farmer" ? { landSize, cropType, machineryNeed } : undefined,
-      ownerProfile:
-        role === "owner"
-          ? { equipmentType, machineCount, serviceArea }
-          : undefined,
-    });
+    if (!fullName.trim()) return toast.error("Full name is required");
+    if (!/^\d{6}$/.test(pincode))
+      return toast.error("Pincode must be 6 digits");
+    if (!districtId || !mandalId || !villageId)
+      return toast.error("Select a valid district, mandal, and village");
+    setSaving(true);
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName,
+          city,
+          pincode,
+          language,
+          districtId,
+          mandalId,
+          villageId,
+        }),
+      });
+      const data = (await response.json()) as {
+        profile?: ApiProfile;
+        message?: string;
+      };
+      if (!response.ok || !data.profile)
+        throw new Error(data.message ?? "Unable to save profile");
+      const actualRole = data.profile.role === "owner" ? "owner" : "farmer";
+      const updated = saveSessionProfile({
+        authenticated: savedProfile.authenticated,
+        role: actualRole,
+        fullName: fullName.trim(),
+        phone,
+        city: city.trim(),
+        pincode,
+        language,
+        districtId,
+        district,
+        mandalId,
+        mandal,
+        villageId,
+        village,
+        farmerProfile:
+          role === "farmer" ? { landSize, cropType, machineryNeed } : undefined,
+        ownerProfile:
+          role === "owner"
+            ? { equipmentType, machineCount, serviceArea }
+            : undefined,
+        entryType: savedProfile.entryType,
+      });
+      setSavedProfile(updated);
+      setSaved(true);
+      toast.success(text.saved);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Unable to save your profile",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const text =
-    uiLanguage === "te"
-      ? {
-          title: "ప్రొఫైల్ మరియు స్థానం",
-          subtitle: "మీ ఖాతా వివరాలను సెట్ చేయండి",
-          toggle: "English",
-          name: "పూర్తి పేరు",
-          phone: "ఫోన్ నంబర్",
-          role: "మీరు ఎవరు",
-          language: "భాష",
-          district: "జిల్లా",
-          mandal: "మండలం",
-          village: "గ్రామం",
-          locationCardTitle: "ఎంచుకున్న స్థానం",
-          summaryTitle: "ఖాతా సారాంశం",
-          savedTitle: "సేవ్ చేసిన సెట్టింగ్స్",
-          locationTitle: "స్థానం వివరాలు",
-          summaryItems: [
-            "రైతు, యజమాని, మరియు లిస్టింగ్‌ల కోసం పాత్ర ఆధారిత access.",
-            "English మరియు తెలుగు UI preference.",
-            "స్థానాన్ని బట్టి machinery discovery మరియు enquiry routing.",
-            "తర్వాత Supabase sync ద్వారా profile persistence.",
-          ],
-          roleOptions: { farmer: "రైతు", owner: "యజమాని" },
-          languageOptions: { en: "English", te: "తెలుగు" },
-          locationMode: "తెలుగు మోడ్",
-          dependentTitle: "Dependent selects పని చేస్తున్నాయి",
-          dependentCopy:
-            "జిల్లా, మండలం, గ్రామం fields కలిసి update అవుతాయి. ఇది location master data కి base.",
-          profileSummary: "ఈ profile తో ఏం సాధ్యం",
-          locationLabel: "స్థానం",
-          languageLabel: "భాష",
-          languageValue: "తెలుగు",
-        }
-      : {
-          title: "Profile and location",
-          subtitle: "Set up your account details",
-          toggle: "తెలుగు",
-          name: "Full name",
-          phone: "Phone number",
-          role: "You are",
-          language: "Language",
-          district: "District",
-          mandal: "Mandal",
-          village: "Village",
-          locationCardTitle: "Saved location",
-          summaryTitle: "Account summary",
-          savedTitle: "Saved settings",
-          locationTitle: "Location details",
-          summaryItems: [
-            "Role-based access for farmer and owner equipment flows.",
-            "English and Telugu UI preference.",
-            "Location-aware machinery discovery and enquiry routing.",
-            "Future Supabase sync for persisted profiles.",
-          ],
-          roleOptions: { farmer: "Farmer", owner: "Owner" },
-          languageOptions: { en: "English", te: "Telugu" },
-          locationMode: "English mode",
-          dependentTitle: "Dependent selects are wired",
-          dependentCopy:
-            "The district, mandal, and village fields update together, which is the base for location master data.",
-          profileSummary: "What this profile enables",
-          locationLabel: "Location",
-          languageLabel: "Language",
-          languageValue: "English",
-        };
-
   return (
-    <form
-      className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]"
-      onSubmit={handleSaveProfile}
-    >
-      <section className="rounded-[28px] border border-[color:var(--line)] bg-white p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <form className="profile-page" onSubmit={handleSave}>
+      <section className="profile-main-card">
+        <div className="profile-heading">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-              {text.title}
-            </p>
-            <h2 className="mt-1 text-2xl font-black tracking-tight">
-              {text.subtitle}
-            </h2>
+            <p className="eyebrow">{text.title}</p>
+            <h1>{text.subtitle}</h1>
           </div>
           <button
             type="button"
+            className="profile-language-button"
             onClick={toggleLanguage}
-            className="rounded-full border border-[color:var(--line)] px-4 py-2 text-sm font-semibold"
           >
             {text.toggle}
           </button>
         </div>
-
-        <div className="mt-4 rounded-[24px] border border-[color:var(--line)] bg-[linear-gradient(135deg,_rgba(15,23,42,1),_rgba(51,65,85,1))] p-5 text-white">
-          <p className="text-xs uppercase tracking-[0.3em] text-white/70">
-            {text.locationMode}
-          </p>
-          <h3 className="mt-2 text-lg font-black">{text.locationTitle}</h3>
-          <p className="mt-2 text-sm leading-6 text-white/80">
-            {text.dependentCopy}
-          </p>
-        </div>
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-            <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-              {text.name}
+        <Card className="profile-location-banner">
+          <CardContent>
+            <span className="profile-banner-icon">
+              <MapPin size={19} />
             </span>
-            <input
+            <div>
+              <p>Location details</p>
+              <strong>
+                {district && mandal && village
+                  ? `${village} / ${mandal} / ${district}`
+                  : text.noLocation}
+              </strong>
+              <small>
+                Your location controls which nearby equipment is shown.
+              </small>
+            </div>
+          </CardContent>
+        </Card>
+        <div className="profile-form-grid">
+          <label className="profile-field">
+            <span>{text.name}</span>
+            <Input
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
-              className="mt-2 w-full bg-transparent text-sm outline-none"
             />
           </label>
-          <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-            <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-              {text.phone}
-            </span>
-            <input
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              className="mt-2 w-full bg-transparent text-sm outline-none"
+          <label className="profile-field">
+            <span>{text.phone}</span>
+            <Input value={phone} readOnly />
+          </label>
+          <label className="profile-field">
+            <span>{text.city}</span>
+            <Input
+              value={city}
+              onChange={(event) => setCity(event.target.value)}
             />
           </label>
-          <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-            <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-              {text.role}
-            </span>
+          <label className="profile-field">
+            <span>{text.pincode}</span>
+            <Input
+              inputMode="numeric"
+              maxLength={6}
+              value={pincode}
+              onChange={(event) =>
+                setPincode(event.target.value.replace(/\D/g, ""))
+              }
+            />
+          </label>
+          <label className="profile-field">
+            <span>{text.role}</span>
             <select
               value={role}
-              onChange={(event) =>
-                setRole(event.target.value as "farmer" | "owner")
-              }
-              className="mt-2 w-full bg-transparent text-sm outline-none"
+              disabled
             >
-              <option value="farmer">{text.roleOptions.farmer}</option>
-              <option value="owner">{text.roleOptions.owner}</option>
+              <option value="farmer">{text.farmer}</option>
+              <option value="owner">{text.owner}</option>
             </select>
           </label>
-          <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-            <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-              {text.language}
-            </span>
+          <label className="profile-field">
+            <span>{text.language}</span>
             <select
-              value={uiLanguage}
+              value={language}
               onChange={(event) =>
                 setLanguage(event.target.value as "en" | "te")
               }
-              className="mt-2 w-full bg-transparent text-sm outline-none"
             >
-              <option value="en">{text.languageOptions.en}</option>
-              <option value="te">{text.languageOptions.te}</option>
+              <option value="en">English</option>
+              <option value="te">తెలుగు</option>
             </select>
           </label>
         </div>
-
-        {role === "farmer" ? (
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
-            <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                Land size
-              </span>
-              <input
-                value={landSize}
-                onChange={(event) => setLandSize(event.target.value)}
-                className="mt-2 w-full bg-transparent text-sm outline-none"
-              />
-            </label>
-            <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                Crop type
-              </span>
-              <input
-                value={cropType}
-                onChange={(event) => setCropType(event.target.value)}
-                className="mt-2 w-full bg-transparent text-sm outline-none"
-              />
-            </label>
-            <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                Machinery need
-              </span>
-              <input
-                value={machineryNeed}
-                onChange={(event) => setMachineryNeed(event.target.value)}
-                className="mt-2 w-full bg-transparent text-sm outline-none"
-              />
-            </label>
-          </div>
-        ) : (
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
-            <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                Equipment type
-              </span>
-              <input
-                value={equipmentType}
-                onChange={(event) => setEquipmentType(event.target.value)}
-                className="mt-2 w-full bg-transparent text-sm outline-none"
-              />
-            </label>
-            <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                Machine count
-              </span>
-              <input
-                value={machineCount}
-                onChange={(event) => setMachineCount(event.target.value)}
-                className="mt-2 w-full bg-transparent text-sm outline-none"
-              />
-            </label>
-            <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                Service area
-              </span>
-              <input
-                value={serviceArea}
-                onChange={(event) => setServiceArea(event.target.value)}
-                className="mt-2 w-full bg-transparent text-sm outline-none"
-              />
-            </label>
-          </div>
-        )}
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-            <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-              {text.district}
-            </span>
+        <div className="profile-section-label">
+          <UserRound size={18} />
+          <h2>{role === "farmer" ? "Farmer details" : "Owner details"}</h2>
+        </div>
+        <div className="profile-form-grid profile-form-grid--three">
+          {role === "farmer" ? (
+            <>
+              <label className="profile-field">
+                <span>Land size</span>
+                <Input
+                  value={landSize}
+                  onChange={(event) => setLandSize(event.target.value)}
+                />
+              </label>
+              <label className="profile-field">
+                <span>Crop type</span>
+                <Input
+                  value={cropType}
+                  onChange={(event) => setCropType(event.target.value)}
+                />
+              </label>
+              <label className="profile-field">
+                <span>Machinery need</span>
+                <Input
+                  value={machineryNeed}
+                  onChange={(event) => setMachineryNeed(event.target.value)}
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="profile-field">
+                <span>Equipment type</span>
+                <Input
+                  value={equipmentType}
+                  onChange={(event) => setEquipmentType(event.target.value)}
+                />
+              </label>
+              <label className="profile-field">
+                <span>Machine count</span>
+                <Input
+                  value={machineCount}
+                  onChange={(event) => setMachineCount(event.target.value)}
+                />
+              </label>
+              <label className="profile-field">
+                <span>Service area</span>
+                <Input
+                  value={serviceArea}
+                  onChange={(event) => setServiceArea(event.target.value)}
+                />
+              </label>
+            </>
+          )}
+        </div>
+        <div className="profile-section-label">
+          <MapPin size={18} />
+          <h2>Farm location</h2>
+        </div>
+        <div className="profile-form-grid profile-form-grid--three">
+          <label className="profile-field">
+            <span>{text.district}</span>
             <select
-              value={district}
+              value={districtId}
               onChange={(event) => {
-                const nextDistrict = event.target.value;
-                const nextMandal = getMandals(nextDistrict)[0]?.name ?? "";
-                const nextVillage =
-                  getVillages(nextDistrict, nextMandal)[0] ?? "";
-                setDistrict(nextDistrict);
-                setMandal(nextMandal);
-                setVillage(nextVillage);
+                const item = districts.find(
+                  (entry) => entry.code === event.target.value,
+                );
+                setDistrictId(event.target.value);
+                setDistrict(item?.name ?? "");
+                setMandalId("");
+                setMandal("");
+                setVillageId("");
+                setVillage("");
               }}
-              className="mt-2 w-full bg-transparent text-sm outline-none"
             >
-              {districtLocations.map((entry) => (
-                <option key={entry.district}>{entry.district}</option>
+              <option value="">Select district</option>
+              {districts.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.name}
+                </option>
               ))}
             </select>
           </label>
-          <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-            <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-              {text.mandal}
-            </span>
+          <label className="profile-field">
+            <span>{text.mandal}</span>
             <select
-              value={mandal}
+              value={mandalId}
+              disabled={!districtId}
               onChange={(event) => {
-                const nextMandal = event.target.value;
-                const nextVillage = getVillages(district, nextMandal)[0] ?? "";
-                setMandal(nextMandal);
-                setVillage(nextVillage);
+                const item = mandalOptions.find(
+                  (entry) => entry.code === event.target.value,
+                );
+                setMandalId(event.target.value);
+                setMandal(item?.name ?? "");
+                setVillageId("");
+                setVillage("");
               }}
-              className="mt-2 w-full bg-transparent text-sm outline-none"
             >
-              {mandalOptions.map((entry) => (
-                <option key={entry.name}>{entry.name}</option>
+              <option value="">Select mandal</option>
+              {mandalOptions.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.name}
+                </option>
               ))}
             </select>
           </label>
-          <label className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-soft)] px-4 py-3">
-            <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-              {text.village}
-            </span>
+          <label className="profile-field">
+            <span>{text.village}</span>
             <select
-              value={village}
-              onChange={(event) => setVillage(event.target.value)}
-              className="mt-2 w-full bg-transparent text-sm outline-none"
+              value={villageId}
+              disabled={!mandalId}
+              onChange={(event) => {
+                const item = villageOptions.find(
+                  (entry) => entry.code === event.target.value,
+                );
+                setVillageId(event.target.value);
+                setVillage(item?.name ?? "");
+              }}
             >
-              {villageOptions.map((entry) => (
-                <option key={entry}>{entry}</option>
+              <option value="">Select village</option>
+              {villageOptions.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.name}
+                </option>
               ))}
             </select>
           </label>
         </div>
-
-        <div className="mt-6 rounded-[24px] border border-[color:var(--line)] bg-[color:var(--accent-soft)] p-5">
-          <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--accent)]">
-            {text.locationCardTitle}
-          </p>
-          <h3 className="mt-1 text-lg font-black">{text.dependentTitle}</h3>
-          <p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">
-            {text.dependentCopy}
-          </p>
-        </div>
-
-        <div className="mt-6 flex justify-end">
+        <div className="profile-save-row">
+          <span>
+            {saved ? (
+              <>
+                <Check size={16} /> {text.saved}
+              </>
+            ) : (
+              "Changes are saved to your MandalRent profile."
+            )}
+          </span>
           <button
             type="submit"
-            className="rounded-full bg-[color:var(--accent)] px-5 py-3 text-sm font-semibold text-white shadow-sm"
+            className="profile-save-button"
+            disabled={saving}
           >
-            Save profile details
+            <Save size={16} />
+            {saving ? "Saving..." : text.save}
           </button>
         </div>
       </section>
-
-      <section className="space-y-4">
-        <div className="rounded-[28px] border border-[color:var(--line)] bg-white p-5">
-          <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-            {text.summaryTitle}
-          </p>
-          <h3 className="mt-1 text-xl font-black">{text.profileSummary}</h3>
-          <ul className="mt-4 space-y-3 text-sm leading-6 text-[color:var(--muted)]">
-            {text.summaryItems.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="rounded-[28px] border border-[color:var(--line)] bg-[color:var(--surface-soft)] p-5">
-          <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--muted)]">
-            {text.savedTitle}
-          </p>
-          <div className="mt-4 grid gap-3 text-sm">
-            <div className="rounded-[18px] bg-white px-4 py-3">
-              <span className="block text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                {text.role}
-              </span>
-              <span className="mt-1 block font-semibold capitalize">
-                {role}
-              </span>
+      <aside className="profile-sidebar">
+        <Card>
+          <CardHeader>
+            <p className="eyebrow">{text.summary}</p>
+            <CardTitle>What this profile enables</CardTitle>
+          </CardHeader>
+          <CardContent className="profile-summary-list">
+            <p>Personalized equipment discovery near your saved location.</p>
+            <p>Farmer and owner access in one account.</p>
+            <p>English and Telugu language preference.</p>
+            <p>Mobile number remains protected as your login identity.</p>
+          </CardContent>
+        </Card>
+        <Card className="profile-saved-card">
+          <CardHeader>
+            <p className="eyebrow">{text.location}</p>
+            <CardTitle>Your saved details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div>
+              <small>Full name</small>
+              <strong>{fullName || "Not added"}</strong>
             </div>
-            <div className="rounded-[18px] bg-white px-4 py-3">
-              <span className="block text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                {text.locationLabel}
-              </span>
-              <span className="mt-1 block font-semibold">
-                {district} / {mandal} / {village}
-              </span>
+            <div>
+              <small>Role</small>
+              <strong>{role === "farmer" ? text.farmer : text.owner}</strong>
             </div>
-            <div className="rounded-[18px] bg-white px-4 py-3">
-              <span className="block text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
-                {text.languageLabel}
-              </span>
-              <span className="mt-1 block font-semibold">
-                {uiLanguage === "en"
-                  ? text.languageOptions.en
-                  : text.languageValue}
-              </span>
+            <div>
+              <small>Location</small>
+              <strong>
+                {district && mandal && village
+                  ? `${district} / ${mandal} / ${village}`
+                  : text.noLocation}
+              </strong>
             </div>
-          </div>
-        </div>
-      </section>
+          </CardContent>
+        </Card>
+      </aside>
     </form>
   );
 }

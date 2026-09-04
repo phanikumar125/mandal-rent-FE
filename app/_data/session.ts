@@ -24,6 +24,9 @@ export type ProfileSession = {
   district: string;
   mandal: string;
   village: string;
+  districtId?: string;
+  mandalId?: string;
+  villageId?: string;
   farmerProfile?: FarmerProfileFields;
   ownerProfile?: OwnerProfileFields;
   signedInAt: string;

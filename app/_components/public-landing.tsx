@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { Languages, LogIn, Sprout, Tractor, UserPlus } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { useLanguage } from "./language-toggle";
+
+const landingImages = {
+  farmer:
+    "https://images.unsplash.com/photo-1703922055661-2168ea8b80a9?auto=format&fit=crop&w=900&q=82",
+  owner:
+    "https://images.unsplash.com/photo-1624547481160-d564f43324f9?auto=format&fit=crop&w=900&q=82",
+} as const;
 
 const copy = {
   en: {
@@ -24,7 +32,8 @@ const copy = {
     login: "లాగిన్",
     register: "నమోదు",
     farmer: "రైతు",
-    farmerBody: "మీ నగరానికి దగ్గరలో ట్రాక్టర్లు, హార్వెస్టర్లు, ఇతర పరికరాలను కనుగొనండి.",
+    farmerBody:
+      "మీ నగరానికి దగ్గరలో ట్రాక్టర్లు, హార్వెస్టర్లు, ఇతర పరికరాలను కనుగొనండి.",
     owner: "యంత్ర యజమాని",
     ownerBody: "మీ పరికరాలను జాబితా చేసి దగ్గరలోని రైతుల అభ్యర్థనలు పొందండి.",
     language: "English",
@@ -38,24 +47,67 @@ export function PublicLanding() {
   return (
     <main className="public-landing">
       <header className="public-landing-header">
-        <Link href="/" className="site-brand"><span className="brand-mark"><Tractor /></span><span>Mandal<span>Rent</span></span></Link>
-        <button type="button" className="language-button" onClick={toggleLanguage}>
+        <Link href="/" className="site-brand">
+          <span className="brand-mark">
+            <Tractor />
+          </span>
+          <span>
+            Mandal<span>Rent</span>
+          </span>
+        </Link>
+        <button
+          type="button"
+          className="language-button"
+          onClick={toggleLanguage}
+        >
           <Languages size={18} /> {text.language}
         </button>
       </header>
       <section className="public-landing-hero">
         <div className="public-landing-copy">
-          <span className="hero-kicker"><Sprout /> {text.eyebrow}</span>
+          <span className="hero-kicker">
+            <Sprout /> {text.eyebrow}
+          </span>
           <h1>{text.title}</h1>
           <p>{text.body}</p>
           <div className="public-landing-actions">
-            <Link href="/login" className="landing-primary"><LogIn size={18} /> {text.login}</Link>
-            <Link href="/register" className="landing-secondary"><UserPlus size={18} /> {text.register}</Link>
+            <Link href="/login" className="landing-primary">
+              <LogIn size={18} /> {text.login}
+            </Link>
+            <Link href="/register" className="landing-secondary">
+              <UserPlus size={18} /> {text.register}
+            </Link>
           </div>
         </div>
         <div className="public-landing-cards">
-          <article><span className="landing-card-icon"><Tractor /></span><h2>{text.farmer}</h2><p>{text.farmerBody}</p></article>
-          <article><span className="landing-card-icon"><Sprout /></span><h2>{text.owner}</h2><p>{text.ownerBody}</p></article>
+          <Card className="landing-role-card">
+            <div className="landing-card-image">
+              <img
+                src={landingImages.farmer}
+                alt="Indian farmer working in a green field"
+                loading="lazy"
+              />
+            </div>
+            <span className="landing-card-icon">
+              <Tractor />
+            </span>
+            <h2>{text.farmer}</h2>
+            <p>{text.farmerBody}</p>
+          </Card>
+          <Card className="landing-role-card">
+            <div className="landing-card-image">
+              <img
+                src={landingImages.owner}
+                alt="Farmers using a tractor in a green field"
+                loading="lazy"
+              />
+            </div>
+            <span className="landing-card-icon">
+              <Sprout />
+            </span>
+            <h2>{text.owner}</h2>
+            <p>{text.ownerBody}</p>
+          </Card>
         </div>
       </section>
     </main>

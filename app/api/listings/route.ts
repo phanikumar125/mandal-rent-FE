@@ -116,7 +116,11 @@ export async function POST(request: NextRequest) {
     if (listingError || !listing) throw listingError ?? new Error("Listing was not created");
     listingId = String(listing.id);
 
-    const files = form.getAll("images").filter((value): value is File => value instanceof File && value.type.startsWith("image/")).slice(0, 5);
+    const imageValues = form.getAll("images").filter((value): value is File => value instanceof File && value.size > 0);
+    const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+    if (imageValues.some((file) => !allowedImageTypes.has(file.type))) return fail("Only JPG, PNG, or WebP images are supported", 400);
+    if (imageValues.some((file) => file.size > 5 * 1024 * 1024)) return fail("Each equipment image must be 5 MB or smaller", 400);
+    const files = imageValues.slice(0, 5);
     for (const [index, file] of files.entries()) {
       const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "-") || "equipment-image";
       const path = `${currentUser.profile.id}/${listingId}/${randomUUID()}-${safeName}`;

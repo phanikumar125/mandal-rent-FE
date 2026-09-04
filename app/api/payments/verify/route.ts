@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser, getSupabaseAdmin } from "@/lib/server-auth";
 import { verifyRazorpayPayment } from "@/lib/razorpay";
+import { notifyUser } from "@/lib/notifications";
 
 function fail(message: string, status: number) {
   return NextResponse.json({ error: "PAYMENT_FAILED", message }, { status });
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     if (!verifyRazorpayPayment(body.razorpay_order_id, body.razorpay_payment_id, body.razorpay_signature)) return fail("Payment signature could not be verified", 400);
 
     const supabase = getSupabaseAdmin();
-    const { data: payment, error: paymentError } = await supabase.from("payments").select("id, booking_request_id, farmer_id, gateway_order_id, status").eq("booking_request_id", body.bookingRequestId).eq("gateway_order_id", body.razorpay_order_id).eq("farmer_id", currentUser.profile.id).maybeSingle();
+    const { data: payment, error: paymentError } = await supabase.from("payments").select("id, booking_request_id, farmer_id, owner_id, listing_id, gateway_order_id, status").eq("booking_request_id", body.bookingRequestId).eq("gateway_order_id", body.razorpay_order_id).eq("farmer_id", currentUser.profile.id).maybeSingle();
     if (paymentError) throw paymentError;
     if (!payment) return fail("Payment record was not found", 404);
     if (payment.status === "paid") return NextResponse.json({ payment: { id: payment.id, status: "paid" }, bookingRequest: { id: payment.booking_request_id, payment_status: "paid", rental_status: "confirmed" } });
@@ -25,6 +26,14 @@ export async function POST(request: NextRequest) {
     if (updatePaymentError) throw updatePaymentError;
     const { data: bookingRequest, error: bookingError } = await supabase.from("booking_requests").update({ payment_status: "paid", rental_status: "confirmed", status: "booked" }).eq("id", payment.booking_request_id).eq("requester_id", currentUser.profile.id).select("id, listing_id, owner_id, rental_start, rental_end, total_amount, rental_status, payment_status").single();
     if (bookingError) throw bookingError;
+    const { data: listing } = await supabase.from("listings").select("title").eq("id", bookingRequest.listing_id).maybeSingle();
+    const title = listing?.title ?? "your equipment booking";
+    await Promise.all([
+      notifyUser(supabase, { userId: currentUser.profile.id, type: "payment_successful", title: "Payment successful", message: `Your payment for ${title} was received.`, entityType: "booking", entityId: bookingRequest.id }),
+      notifyUser(supabase, { userId: currentUser.profile.id, type: "booking_confirmed", title: "Booking confirmed", message: `Your ${title} rental is confirmed.`, entityType: "booking", entityId: bookingRequest.id }),
+      notifyUser(supabase, { userId: bookingRequest.owner_id, type: "new_booking", title: "New paid booking", message: `A farmer has booked ${title}.`, entityType: "booking", entityId: bookingRequest.id }),
+      notifyUser(supabase, { userId: bookingRequest.owner_id, type: "payment_received", title: "Payment received", message: `Payment for ${title} is recorded and payout remains pending.`, entityType: "payment", entityId: updatedPayment.id }),
+    ]);
     return NextResponse.json({ payment: updatedPayment, bookingRequest });
   } catch (error) {
     console.error("Payment verification API error", error);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FarmerMarketplace } from "./farmer-marketplace";
+import { FarmerDashboard } from "./farmer-dashboard";
 
 export function DashboardEntry() {
   const router = useRouter();
@@ -20,7 +20,9 @@ export function DashboardEntry() {
       if (active) setReady(true);
     }
     void checkAuth();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [router]);
-  return ready ? <FarmerMarketplace /> : <main className="portal-content" />;
+  return ready ? <FarmerDashboard /> : <main className="portal-content" />;
 }

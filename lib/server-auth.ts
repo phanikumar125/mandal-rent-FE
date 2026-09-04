@@ -20,6 +20,7 @@ export type AuthenticatedProfile = {
   district_id: string | null;
   mandal_id: string | null;
   village_id: string | null;
+  is_active: boolean;
 };
 
 export function getSupabaseAdmin() {
@@ -45,6 +46,7 @@ export function safeProfile(profile: Record<string, unknown>): AuthenticatedProf
     district_id: profile.district_id ? String(profile.district_id) : null,
     mandal_id: profile.mandal_id ? String(profile.mandal_id) : null,
     village_id: profile.village_id ? String(profile.village_id) : null,
+    is_active: profile.is_active !== false,
   };
 }
 
@@ -92,10 +94,13 @@ export async function getCurrentUser() {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, full_name, phone, role, preferred_language, city, pincode, district_id, mandal_id, village_id")
+    .select("id, full_name, phone, role, preferred_language, city, pincode, district_id, mandal_id, village_id, is_active")
     .eq("id", session.profile_id)
     .maybeSingle();
-  if (profileError || !profile) return null;
+  if (profileError || !profile || profile.is_active === false) {
+    if (profile && profile.is_active === false) await supabase.from("user_sessions").update({ revoked_at: new Date().toISOString() }).eq("id", session.id);
+    return null;
+  }
 
   await supabase.from("user_sessions").update({ last_used_at: new Date().toISOString() }).eq("id", session.id);
   return { profile: safeProfile(profile), sessionId: String(session.id) };
@@ -111,15 +116,29 @@ export async function revokeCurrentSession() {
   cookieStore.delete(SESSION_COOKIE);
 }
 
+export async function revokeOtherSessions(profileId: string) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const supabase = getSupabaseAdmin();
+  let query = supabase
+    .from("user_sessions")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("profile_id", profileId)
+    .is("revoked_at", null);
+  if (token) query = query.neq("session_token_hash", hashSessionToken(token));
+  const { error } = await query;
+  if (error) throw error;
+}
+
 export async function authenticateWithPin(phone: string, pin: string) {
   const supabase = getSupabaseAdmin();
   const { data: credential, error } = await supabase
     .from("user_credentials")
-    .select("profile_id, pin_hash, failed_attempts, locked_until")
+    .select("profile_id, pin_hash, failed_attempts, locked_until, profiles!inner(is_active)")
     .eq("phone", phone)
     .maybeSingle();
   if (error) throw error;
-  if (!credential) return null;
+  if (!credential || (credential.profiles as { is_active?: boolean } | null)?.is_active === false) return null;
 
   if (credential.locked_until && new Date(credential.locked_until).getTime() > Date.now()) return null;
 
@@ -141,9 +160,20 @@ export async function authenticateWithPin(phone: string, pin: string) {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, full_name, phone, role, preferred_language, city, pincode, district_id, mandal_id, village_id")
+    .select("id, full_name, phone, role, preferred_language, city, pincode, district_id, mandal_id, village_id, is_active")
     .eq("id", credential.profile_id)
     .maybeSingle();
   if (profileError) throw profileError;
   return profile ? safeProfile(profile) : null;
+}
+
+export async function isAccountBlocked(phone: string) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("user_credentials")
+    .select("profiles!inner(is_active)")
+    .eq("phone", phone)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.profiles as { is_active?: boolean } | null)?.is_active === false;
 }

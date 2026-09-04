@@ -12,6 +12,9 @@ import { normalizeIndianPhone, isValidPin } from "@/lib/auth-validation";
 import { saveSessionProfile } from "@/app/_data/session";
 import { useLanguage } from "@/app/_components/language-toggle";
 
+const loginHeroImage =
+  "https://images.unsplash.com/photo-1624547481160-d564f43324f9?auto=format&fit=crop&w=1600&q=85";
+
 const copy = {
   en: {
     eyebrow: "One login · two services",
@@ -46,10 +49,16 @@ export default function LoginPage() {
   async function login() {
     const normalizedPhone = normalizeIndianPhone(phone);
     if (!normalizedPhone) {
-      return toast.error(language === "te" ? "చెల్లుబాటు అయ్యే మొబైల్ నంబర్ నమోదు చేయండి" : "Invalid mobile number");
+      return toast.error(
+        language === "te"
+          ? "చెల్లుబాటు అయ్యే మొబైల్ నంబర్ నమోదు చేయండి"
+          : "Invalid mobile number",
+      );
     }
     if (!isValidPin(pin)) {
-      return toast.error(language === "te" ? "PIN 6 అంకెలుగా ఉండాలి" : "PIN must be 6 digits");
+      return toast.error(
+        language === "te" ? "PIN 6 అంకెలుగా ఉండాలి" : "PIN must be 6 digits",
+      );
     }
 
     setWorking(true);
@@ -59,9 +68,23 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: normalizedPhone, pin }),
       });
-      const result = (await response.json()) as { profile?: { full_name?: string; phone?: string; role?: string; preferred_language?: string; city?: string; pincode?: string }; message?: string };
+      const result = (await response.json()) as {
+        profile?: {
+          full_name?: string;
+          phone?: string;
+          role?: string;
+          preferred_language?: string;
+          city?: string;
+          pincode?: string;
+        };
+        message?: string;
+      };
       if (!response.ok || !result.profile) {
-        return toast.error(language === "te" ? "మొబైల్ నంబర్ లేదా PIN తప్పు" : "Invalid mobile number or PIN");
+        return toast.error(
+          language === "te"
+            ? "మొబైల్ నంబర్ లేదా PIN తప్పు"
+            : "Invalid mobile number or PIN",
+        );
       }
       const profile = result.profile;
 
@@ -76,10 +99,22 @@ export default function LoginPage() {
         language: profile.preferred_language === "te" ? "te" : language,
       });
 
-      toast.success(language === "te" ? "విజయవంతంగా లాగిన్ అయ్యారు" : "Login successful");
-      router.push(profile.role === "owner" ? "/owner" : profile.role === "admin" ? "/admin" : "/dashboard");
+      toast.success(
+        language === "te" ? "విజయవంతంగా లాగిన్ అయ్యారు" : "Login successful",
+      );
+      router.push(
+        profile.role === "owner"
+          ? "/owner"
+          : profile.role === "admin"
+            ? "/admin"
+            : "/dashboard",
+      );
     } catch {
-      toast.error(language === "te" ? "మొబైల్ నంబర్ లేదా PIN తప్పు" : "Invalid mobile number or PIN");
+      toast.error(
+        language === "te"
+          ? "మొబైల్ నంబర్ లేదా PIN తప్పు"
+          : "Invalid mobile number or PIN",
+      );
     } finally {
       setWorking(false);
     }
@@ -88,20 +123,36 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-photo" aria-label="MandalRent login">
+        <img
+          src={loginHeroImage}
+          alt="Indian farmer driving a tractor through a green field"
+        />
         <div className="login-photo-overlay" />
         <Link href="/" className="photo-brand">
-          <span className="brand-mark"><Tractor /></span>
-          <span>Mandal<span>Rent</span></span>
+          <span className="brand-mark">
+            <Tractor />
+          </span>
+          <span>
+            Mandal<span>Rent</span>
+          </span>
         </Link>
         <div className="photo-copy">
           <span className="eyebrow-light">{text.eyebrow}</span>
-          <h1>{language === "te" ? "మీ పొలానికి కావాల్సిన యంత్రం, మీ దగ్గరలోనే." : "The right machine for your farm, nearby."}</h1>
+          <h1>
+            {language === "te"
+              ? "మీ పొలానికి కావాల్సిన యంత్రం, మీ దగ్గరలోనే."
+              : "The right machine for your farm, nearby."}
+          </h1>
           <p>{text.intro}</p>
         </div>
       </section>
       <section className="login-panel">
         <div className="login-card">
-          <button type="button" className="language-button" onClick={toggleLanguage}>
+          <button
+            type="button"
+            className="language-button"
+            onClick={toggleLanguage}
+          >
             <Languages size={18} /> {text.language}
           </button>
           <p className="eyebrow">{text.eyebrow}</p>
@@ -111,19 +162,46 @@ export default function LoginPage() {
             <Field>
               <FieldLabel htmlFor="phone">{text.phone}</FieldLabel>
               <div className="phone-input">
-                <span>+91</span><Phone />
-                <Input id="phone" inputMode="numeric" maxLength={10} value={phone} onChange={(event) => setPhone(event.target.value.replace(/\D/g, ""))} />
+                <span>+91</span>
+                <Phone />
+                <Input
+                  id="phone"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={phone}
+                  onChange={(event) =>
+                    setPhone(event.target.value.replace(/\D/g, ""))
+                  }
+                />
               </div>
             </Field>
             <Field>
               <FieldLabel htmlFor="pin">{text.pin}</FieldLabel>
-              <Input id="pin" type="password" inputMode="numeric" maxLength={6} autoComplete="current-password" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))} />
+              <Input
+                id="pin"
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                autoComplete="current-password"
+                value={pin}
+                onChange={(event) =>
+                  setPin(event.target.value.replace(/\D/g, ""))
+                }
+              />
             </Field>
-            <ShimmerButton type="button" onClick={login} disabled={working} background="#075b2b" className="login-submit">
+            <ShimmerButton
+              type="button"
+              onClick={login}
+              disabled={working}
+              background="#075b2b"
+              className="login-submit"
+            >
               {working ? "…" : text.login}
             </ShimmerButton>
           </FieldGroup>
-          <div className="secure-note"><Link href="/register">{text.register}</Link></div>
+          <div className="secure-note">
+            <Link href="/register">{text.register}</Link>
+          </div>
         </div>
       </section>
     </main>
