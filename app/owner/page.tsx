@@ -408,7 +408,7 @@ export default function OwnerPage() {
   return (
     <main className="owner-shell">
       <aside className="owner-sidebar">
-        <Link href="/" className="site-brand owner-brand">
+        <Link href="/owner" className="site-brand owner-brand">
           <span className="brand-mark">
             <Tractor />
           </span>

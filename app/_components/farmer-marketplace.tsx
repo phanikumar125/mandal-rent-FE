@@ -504,7 +504,7 @@ export function FarmerMarketplace() {
   return (
     <main className="farmer-page">
       <header className="site-header">
-        <Link href="/" className="site-brand">
+        <Link href="/dashboard" className="site-brand">
           <span className="brand-mark">
             <Tractor />
           </span>

@@ -158,7 +158,14 @@ export default function LoginPage() {
           <p className="eyebrow">{text.eyebrow}</p>
           <h2>{text.title}</h2>
           <p className="login-intro">{text.intro}</p>
-          <FieldGroup className="login-fields">
+          <form
+            className="login-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void login();
+            }}
+          >
+            <FieldGroup className="login-fields">
             <Field>
               <FieldLabel htmlFor="phone">{text.phone}</FieldLabel>
               <div className="phone-input">
@@ -190,15 +197,15 @@ export default function LoginPage() {
               />
             </Field>
             <ShimmerButton
-              type="button"
-              onClick={login}
+              type="submit"
               disabled={working}
               background="#075b2b"
               className="login-submit"
             >
               {working ? "…" : text.login}
             </ShimmerButton>
-          </FieldGroup>
+            </FieldGroup>
+          </form>
           <div className="secure-note">
             <Link href="/register">{text.register}</Link>
           </div>

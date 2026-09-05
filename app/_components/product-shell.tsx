@@ -6,9 +6,9 @@ import { Heart, Home, Search, Tractor, UserRound } from "lucide-react";
 import { productCopy } from "../_data/product";
 import { useLanguage } from "./language-toggle";
 
-export function Brand() {
+export function Brand({ href = "/" }: { href?: string } = {}) {
   return (
-    <Link href="/" className="brand" aria-label="MandalRent home">
+    <Link href={href} className="brand" aria-label="MandalRent home">
       <span className="brand-mark" aria-hidden="true">
         <Tractor size={24} strokeWidth={2.2} />
       </span>

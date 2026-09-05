@@ -89,7 +89,7 @@ export default function PortalLayout({
     <div className="portal-shell">
       {!adminRoute ? <header className="portal-header">
         <div className="portal-header-inner">
-          <Brand />
+          <Brand href={role === "owner" ? "/owner" : role === "admin" ? "/admin" : "/dashboard"} />
           <button
             type="button"
             className="portal-menu-button"
@@ -114,9 +114,6 @@ export default function PortalLayout({
                 {item.label}
               </Link>
             ))}
-            <Link href="/v2" className="portal-v2-link">
-              {text.v2}
-            </Link>
           </nav>
           <div className="portal-actions">
             <NotificationBell />

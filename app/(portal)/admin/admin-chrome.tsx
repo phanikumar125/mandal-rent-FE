@@ -73,7 +73,7 @@ export function AdminProfileMenu({ adminName }: { adminName: string }) {
 
   return (
     <div className="admin-profile-menu" ref={containerRef}>
-      <button type="button" className="admin-profile-trigger" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}><span className="admin-avatar">{initials}</span><span><strong>{displayName}</strong><small>Administrator</small></span><ChevronDown size={16} /></button>
+      <button type="button" className="admin-profile-trigger" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}><span className="admin-avatar">{initials}</span><span><strong>{displayName}</strong></span><ChevronDown size={16} /></button>
       {open ? <div className="admin-profile-dropdown" role="menu"><Link href="/admin/settings#profile" role="menuitem" onClick={() => setOpen(false)}><UserRound size={16} /> My Profile</Link><Link href="/admin/settings" role="menuitem" onClick={() => setOpen(false)}><Settings size={16} /> Settings</Link><div className="admin-dropdown-divider" /><button type="button" role="menuitem" className="admin-dropdown-logout" onClick={() => { setOpen(false); void secureLogout(router); }}><LogOut size={16} /> Logout</button></div> : null}
     </div>
   );
